@@ -1,0 +1,24 @@
+html,
+body {
+    height: 100%;
+}
+
+#editor {
+    font-size: 12pt;
+    padding: 0px;
+}
+
+#output {
+    font-size: 12pt;
+    font-family: monospace;
+    white-space: pre;
+    overflow: scroll;
+}
+
+#output .error {
+    color: red;
+}
+
+#output .info {
+    color: green;
+}
