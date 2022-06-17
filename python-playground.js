@@ -1,5 +1,7 @@
 "use strict";
 
+const INITIAL_PROGRAM = "print('Hello, world!')";
+
 // editor
 
 const editor = ace.edit("editor");
@@ -13,7 +15,7 @@ editor.commands.addCommand({
         runProgram();
     },
 });
-editor.setValue("print('Hello, world!')", 1);
+editor.setValue(INITIAL_PROGRAM, 1);
 editor.focus();
 
 // console output
@@ -29,28 +31,22 @@ runButton.addEventListener("click", function (event) {
 
 // Pyodide
 
-function input_fixed(text) {
+// Fix input(prompt="...").
+// See: https://github.com/pyodide/pyodide/issues/758#issuecomment-696418449
+function inputFixed(text) {
     return window.prompt(text);
 }
 
-async function main() {
+async function pyodideMain() {
     let pyodide = await loadPyodide({
         stdout: (text) => { addToOutput(text); },
         stderr: (text) => { addToError(text); }
     });
     return pyodide;
 }
-let pyodideReadyPromise = main();
+let pyodideReadyPromise = pyodideMain();
 
-function addToOutput(s) {
-    if (s == "Python initialization complete") {
-        addToInfo(s);
-        return;
-    }
-    output.innerHTML += sanitize(s) + "<br />";
-}
-
-function sanitize(s) {
+function escapeHTML(s) {
     return String(s).replace(/&/g, "&amp;")
         .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;")
@@ -58,28 +54,44 @@ function sanitize(s) {
         .replace(/ /g, "&nbsp;");
 }
 
+function addToOutput(s) {
+    if (s == "Python initialization complete") {
+        // This is printed once at the beginning.
+        addToInfo(s);
+        return;
+    }
+    output.innerHTML += escapeHTML(s) + "<br />";
+}
+
 function addToError(s) {
-    let first = true;
+    let isFirst = true;
     let skipNext = false;
     let sourceLines;
     let messageLines = [];
+
     for (let line of s.toString().split("\n")) {
         if (skipNext) {
             skipNext = false;
             continue;
         }
         if (line.indexOf("site-packages/_pyodide/_base.py") >= 0) {
+            // We don't like to print Pyodide-related lines.
             skipNext = true;
             continue;
         }
         if (line.indexOf('File "<exec>"') >= 0) {
-            first = false;
+            // First line, due to the eval(...).
+            isFirst = false;
             continue;
         }
+
         const m = line.match(/\s*File "<string>".*line ([0-9]+)/);
         line = line.replace('File "<string>"', 'File "main.py"');
         messageLines.push(line);
+
         if (m) {
+            // Runtime errors don't show the source code.
+            // Put the source code at the corresponding line (for all errors).
             const lineNo = parseInt(m[1]);
             if (!sourceLines) {
                 sourceLines = editor.getValue().split("\n");
@@ -87,21 +99,27 @@ function addToError(s) {
             messageLines.push("    " + sourceLines[lineNo - 1].trimEnd());
         }
     }
-    let html = "";
+
+    // Compile-time errors show the source code and so we get duplicated lines.
+    // Remove duplications.
     for (let i = 0; i < messageLines.length - 1; i++) {
         if (messageLines[i].trim() == messageLines[i + 1].trim()) {
             messageLines.splice(i, 1);
             i--;
         }
     }
+
+    let html = "";
     for (const line of messageLines) {
-        html += sanitize(line) + "<br />";
+        html += escapeHTML(line) + "<br />";
     }
-    output.innerHTML += '<span class="error">' + html + "</span>";
+    html = '<span class="error">' + html + "</span>";
+
+    output.innerHTML += html;
 }
 
 function addToInfo(s) {
-    output.innerHTML += '<span class="info">' + sanitize(s) + "</span><br />";
+    output.innerHTML += '<span class="info">' + escapeHTML(s) + "</span><br />";
 }
 
 async function runProgram() {
@@ -110,9 +128,12 @@ async function runProgram() {
     const pyodide = await pyodideReadyPromise;
     const t0 = performance.now();
     try {
+        // Effectively, we clear user-defined names each time
+        // by calling exec() with an empty namespace.
+        // See: https://github.com/pyodide/pyodide/issues/703#issuecomment-772061144
         pyodide.globals.set("__code_to_run__", editor.getValue());
         pyodide.runPython(
-            "from js import input_fixed as __input_fixed__;" +
+            "from js import inputFixed as __input_fixed__;" +
             "input = __input_fixed__;" +
             "__builtins__.input = __input_fixed__;" +
             "exec(__code_to_run__, {})");

@@ -5,6 +5,10 @@ body {
 
 #editor {
     font-size: 12pt;
+    /*
+     * To avoid the misaligned IME placeholder issue.
+     * See: https://github.com/ajaxorg/ace/issues/4115#issuecomment-557439192
+     */
     padding: 0px;
 }
 
