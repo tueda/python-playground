@@ -79,7 +79,7 @@ function addToError(s) {
             skipNext = true;
             continue;
         }
-        if (line.indexOf('File "<exec>"') >= 0) {
+        if (isFirst && line.indexOf('File "<exec>"') >= 0) {
             // First line, due to the eval(...).
             isFirst = false;
             continue;
